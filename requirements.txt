@@ -15,3 +15,5 @@ sentry-sdk==2.64.0
 shellingham==1.5.4
 typer==0.26.8
 urllib3==2.7.0
+bcrypt==4.0.1
+passlib==1.7.4

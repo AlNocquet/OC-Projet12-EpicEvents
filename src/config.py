@@ -1,3 +1,11 @@
+"""
+config.py
+
+Role:
+- Store application configuration.
+- Centralize configurable values.
+"""
+
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
