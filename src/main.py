@@ -16,25 +16,29 @@ from src.auth import (
     authenticate_user,
     require_permission,
 )
+from src.database import database
+from src.models.client import Client
+from src.models.contract import Contract
+from src.models.event import Event
+from src.models.user import User
 from src.services.client_service import (
     create_client,
     list_all_clients,
     update_client,
 )
-
+from src.services.contract_service import (
+    create_contract,
+    list_all_contracts,
+    list_unpaid_contracts,
+    list_unsigned_contracts,
+    update_contract,
+)
 from src.services.user_service import (
     create_initial_management_user,
     create_user,
     delete_user,
     update_user,
 )
-
-from src.database import database
-
-from src.models.client import Client
-from src.models.contract import Contract
-from src.models.event import Event
-from src.models.user import User
 
 
 app = typer.Typer()
@@ -90,6 +94,30 @@ def _authenticate_current_user(
         raise typer.Exit(code=1)
 
     return user
+
+
+def _display_contracts(
+    contracts: list[Contract],
+) -> None:
+    """
+    Display a collection of contracts in the terminal.
+    """
+
+    if not contracts:
+        typer.echo("No contracts found.")
+        return
+
+    for contract in contracts:
+        typer.echo(
+            f"ID: {contract.id} | "
+            f"Client: {contract.client.full_name} | "
+            f"Company: {contract.client.company_name} | "
+            f"Sales contact: {contract.sales_contact.full_name} | "
+            f"Total amount: {contract.total_amount:.2f} | "
+            f"Amount due: {contract.amount_due:.2f} | "
+            f"Signed: {'Yes' if contract.is_signed else 'No'} | "
+            f"Created: {contract.created_at:%Y-%m-%d %H:%M}"
+        )
 
 
 @app.command()
@@ -420,6 +448,174 @@ def update_client_command(
 
         typer.echo(
             f"Client {client.id} updated successfully."
+        )
+
+    except (ValueError, PermissionError) as error:
+        typer.echo(str(error))
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def create_contract_command(
+    authenticated_email: str,
+    client_id: int,
+    total_amount: str,
+    amount_due: str,
+    is_signed: bool,
+) -> None:
+    """
+    Create a new contract.
+
+    Only an authenticated and active management user may create a
+    contract. The commercial responsible for the client is
+    automatically assigned to the contract.
+
+    The signed status must be provided as true or false.
+    """
+
+    current_user = _authenticate_current_user(
+        email=authenticated_email,
+    )
+
+    try:
+        contract = create_contract(
+            client_id=client_id,
+            total_amount=total_amount,
+            amount_due=amount_due,
+            is_signed=is_signed,
+            current_user=current_user,
+        )
+
+        typer.echo(
+            "Contract created successfully. "
+            f"Contract ID: {contract.id}."
+        )
+
+    except (ValueError, PermissionError) as error:
+        typer.echo(str(error))
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def list_contracts_command(
+    authenticated_email: str,
+) -> None:
+    """
+    Display every contract stored in the CRM.
+
+    All authenticated and active collaborators may consult contract
+    information in read-only mode.
+    """
+
+    current_user = _authenticate_current_user(
+        email=authenticated_email,
+    )
+
+    try:
+        contracts = list_all_contracts(
+            current_user=current_user,
+        )
+
+    except PermissionError as error:
+        typer.echo(str(error))
+        raise typer.Exit(code=1)
+
+    _display_contracts(
+        contracts=contracts,
+    )
+
+
+@app.command()
+def list_unsigned_contracts_command(
+    authenticated_email: str,
+) -> None:
+    """
+    Display every unsigned contract.
+
+    This filter is available only to authenticated and active
+    commercial users.
+    """
+
+    current_user = _authenticate_current_user(
+        email=authenticated_email,
+    )
+
+    try:
+        contracts = list_unsigned_contracts(
+            current_user=current_user,
+        )
+
+    except PermissionError as error:
+        typer.echo(str(error))
+        raise typer.Exit(code=1)
+
+    _display_contracts(
+        contracts=contracts,
+    )
+
+
+@app.command()
+def list_unpaid_contracts_command(
+    authenticated_email: str,
+) -> None:
+    """
+    Display every contract that has not yet been fully paid.
+
+    This filter is available only to authenticated and active
+    commercial users.
+    """
+
+    current_user = _authenticate_current_user(
+        email=authenticated_email,
+    )
+
+    try:
+        contracts = list_unpaid_contracts(
+            current_user=current_user,
+        )
+
+    except PermissionError as error:
+        typer.echo(str(error))
+        raise typer.Exit(code=1)
+
+    _display_contracts(
+        contracts=contracts,
+    )
+
+
+@app.command()
+def update_contract_command(
+    authenticated_email: str,
+    contract_id: int,
+    total_amount: str,
+    amount_due: str,
+    is_signed: bool,
+) -> None:
+    """
+    Update an existing contract.
+
+    Management users may update every contract. Commercial users may
+    update only contracts belonging to clients for whom they are
+    responsible.
+
+    The signed status must be provided as true or false.
+    """
+
+    current_user = _authenticate_current_user(
+        email=authenticated_email,
+    )
+
+    try:
+        contract = update_contract(
+            contract_id=contract_id,
+            total_amount=total_amount,
+            amount_due=amount_due,
+            is_signed=is_signed,
+            current_user=current_user,
+        )
+
+        typer.echo(
+            f"Contract {contract.id} updated successfully."
         )
 
     except (ValueError, PermissionError) as error:
