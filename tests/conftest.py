@@ -14,6 +14,7 @@ from src.models.event import Event
 from src.models.user import User
 
 from src.services.client_service import create_client
+from src.services.contract_service import create_contract
 from src.services.user_service import (
     create_initial_management_user,
     create_user,
@@ -145,4 +146,22 @@ def client(
         phone="+678 123 456 78",
         company_name="Cool Startup LLC",
         current_user=commercial_user,
+    )
+
+
+@pytest.fixture
+def contract(
+    management_user,
+    client,
+):
+    """
+    Create an unsigned and partially unpaid contract.
+    """
+
+    return create_contract(
+        client_id=client.id,
+        total_amount="10000.00",
+        amount_due="2500.00",
+        is_signed=False,
+        current_user=management_user,
     )
