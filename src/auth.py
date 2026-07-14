@@ -10,8 +10,10 @@ Role:
 This module centralizes every authentication and authorization rule.
 """
 
-from peewee import DoesNotExist
+from typing import Optional
+
 from passlib.hash import bcrypt
+from peewee import DoesNotExist
 
 from src.models.user import User
 
@@ -19,28 +21,32 @@ from src.models.user import User
 def authenticate_user(
     email: str,
     password: str,
-) -> User | None:
+) -> Optional[User]:
     """
-    Authenticate a user using an email address and a password.
+    Authenticate an active user using an email address and a password.
 
-    The provided password is verified against the securely stored
-    password hash. Returns the authenticated user when the
-    credentials are valid, otherwise returns None.
+    Returns the authenticated user when the credentials are valid and
+    the account is active. Otherwise, returns None.
+
+    Raises:
+        ValueError: If the email or password is empty.
     """
 
-    email = email.strip()
-    password = password.strip()
+    email = email.strip().lower()
 
     if not email:
         raise ValueError("Email is required.")
 
-    if not password:
+    if not password or not password.strip():
         raise ValueError("Password is required.")
 
     try:
         user = User.get(User.email == email)
 
     except DoesNotExist:
+        return None
+
+    if not user.is_active:
         return None
 
     if bcrypt.verify(password, user.password_hash):
@@ -50,48 +56,49 @@ def authenticate_user(
 
 
 def check_user_department(
-    user: User,
+    user: Optional[User],
     department: str,
 ) -> bool:
     """
-    Verify whether a user belongs to the specified department.
-
-    Returns True when the user's department matches the expected
-    department, otherwise returns False.
+    Verify whether an active user belongs to the specified department.
     """
+
+    if user is None or not user.is_active:
+        return False
 
     return user.department == department.strip().upper()
 
 
 def has_required_permission(
-    user: User,
+    user: Optional[User],
     *authorized_departments: str,
 ) -> bool:
     """
-    Verify whether a user belongs to one of the authorized
+    Verify whether an active user belongs to one of the authorized
     departments.
-
-    Returns True when the user is authorized, otherwise returns
-    False.
     """
 
-    authorized_departments = tuple(
+    if user is None or not user.is_active:
+        return False
+
+    normalized_departments = tuple(
         department.strip().upper()
         for department in authorized_departments
     )
 
-    return user.department in authorized_departments
+    return user.department in normalized_departments
 
 
 def require_permission(
-    user: User,
+    user: Optional[User],
     *authorized_departments: str,
 ) -> None:
     """
     Enforce role-based authorization.
 
-    Raises a PermissionError when the authenticated user does not
-    belong to one of the authorized departments.
+    Raises:
+        PermissionError: If the user is inactive, unauthenticated or
+        does not belong to an authorized department.
     """
 
     if not has_required_permission(
