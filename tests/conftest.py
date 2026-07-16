@@ -4,9 +4,10 @@ conftest.py
 Shared pytest fixtures for the Epic Events test suite.
 """
 
-import pytest
+from datetime import datetime
 
-from src.database import database
+import pytest
+from peewee import SqliteDatabase
 
 from src.models.client import Client
 from src.models.contract import Contract
@@ -25,58 +26,45 @@ from src.services.user_service import (
 )
 
 
+TEST_MODELS = [
+    User,
+    Client,
+    Contract,
+    Event,
+]
+
+
 @pytest.fixture(scope="function")
 def test_database():
-    """
-    Prepare a clean database for each test.
+    """Prepare an isolated in-memory SQLite database for each test."""
 
-    Creates every CRM table before the test and removes them
-    afterwards to guarantee test isolation.
-    """
-
-    database.connect(reuse_if_open=True)
-
-    database.drop_tables(
-        [
-            Event,
-            Contract,
-            Client,
-            User,
-        ],
-        safe=True,
+    test_db = SqliteDatabase(
+        ":memory:",
+        pragmas={
+            "foreign_keys": 1,
+        },
     )
 
-    database.create_tables(
-        [
-            User,
-            Client,
-            Contract,
-            Event,
-        ],
-        safe=True,
-    )
+    with test_db.bind_ctx(
+        TEST_MODELS,
+    ):
+        test_db.connect()
+        test_db.create_tables(
+            TEST_MODELS,
+        )
 
-    yield database
+        yield test_db
 
-    database.drop_tables(
-        [
-            Event,
-            Contract,
-            Client,
-            User,
-        ],
-        safe=True,
-    )
-
-    if not database.is_closed():
-        database.close()
+        test_db.drop_tables(
+            list(reversed(TEST_MODELS)),
+            safe=True,
+        )
+        test_db.close()
 
 
 @pytest.fixture
 def management_user(test_database):
-    """
-    Create an active management user.
-    """
+    """Create an active management user."""
 
     return create_initial_management_user(
         full_name="Morgan Manager",
@@ -89,9 +77,7 @@ def management_user(test_database):
 def commercial_user(
     management_user,
 ):
-    """
-    Create an active commercial user.
-    """
+    """Create an active commercial user."""
 
     return create_user(
         full_name="Casey Commercial",
@@ -106,9 +92,7 @@ def commercial_user(
 def second_commercial_user(
     management_user,
 ):
-    """
-    Create a second active commercial user.
-    """
+    """Create a second active commercial user."""
 
     return create_user(
         full_name="Taylor Commercial",
@@ -123,9 +107,7 @@ def second_commercial_user(
 def support_user(
     management_user,
 ):
-    """
-    Create an active support user.
-    """
+    """Create an active support user."""
 
     return create_user(
         full_name="Sam Support",
@@ -137,12 +119,25 @@ def support_user(
 
 
 @pytest.fixture
+def second_support_user(
+    management_user,
+):
+    """Create a second active support user."""
+
+    return create_user(
+        full_name="Jordan Support",
+        email="second.support@epicevents.com",
+        password="SecondSupportPassword123!",
+        department="SUPPORT",
+        current_user=management_user,
+    )
+
+
+@pytest.fixture
 def client(
     commercial_user,
 ):
-    """
-    Create a client assigned to the primary commercial user.
-    """
+    """Create a client assigned to the primary commercial user."""
 
     return create_client(
         full_name="Kevin Casey",
@@ -158,9 +153,7 @@ def contract(
     management_user,
     client,
 ):
-    """
-    Create an unsigned and partially unpaid contract.
-    """
+    """Create an unsigned and partially unpaid contract."""
 
     return create_contract(
         client_id=client.id,
@@ -170,31 +163,13 @@ def contract(
         current_user=management_user,
     )
 
-@pytest.fixture
-def second_support_user(
-    management_user,
-):
-    """
-    Create a second active support user.
-    """
-
-    return create_user(
-        full_name="Jordan Support",
-        email="second.support@epicevents.com",
-        password="SecondSupportPassword123!",
-        department="SUPPORT",
-        current_user=management_user,
-    )
-
 
 @pytest.fixture
 def signed_contract(
     management_user,
     client,
 ):
-    """
-    Create a signed contract for the primary commercial user's client.
-    """
+    """Create a signed contract for the primary commercial user's client."""
 
     return create_contract(
         client_id=client.id,
@@ -210,11 +185,7 @@ def unassigned_event(
     commercial_user,
     signed_contract,
 ):
-    """
-    Create an event without an assigned support collaborator.
-    """
-
-    from datetime import datetime
+    """Create an event without an assigned support collaborator."""
 
     return create_event(
         contract_id=signed_contract.id,
@@ -234,13 +205,10 @@ def assigned_event(
     support_user,
     unassigned_event,
 ):
-    """
-    Create an event assigned to the primary support user.
-    """
+    """Create an event assigned to the primary support user."""
 
     return assign_support_to_event(
         event_id=unassigned_event.id,
         support_user_id=support_user.id,
         current_user=management_user,
     )
-
