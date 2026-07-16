@@ -23,6 +23,11 @@ from src.models.client import Client
 from src.models.contract import Contract
 from src.models.event import Event
 from src.models.user import User
+from src.monitoring import (
+    capture_application_exception,
+    initialize_sentry,
+    send_test_exception,
+)
 from src.services.client_service import (
     create_client,
     list_all_clients,
@@ -914,5 +919,71 @@ def update_event_command(
         raise typer.Exit(code=1)
 
 
+@app.command()
+def test_sentry_command(
+    authenticated_email: str,
+) -> None:
+    """Send a controlled exception to Sentry."""
+
+    current_user = _authenticate_current_user(
+        email=authenticated_email,
+    )
+
+    try:
+        require_permission(
+            current_user,
+            "MANAGEMENT",
+        )
+
+    except PermissionError as error:
+        typer.echo(str(error))
+        raise typer.Exit(code=1)
+
+    if not initialize_sentry():
+        typer.echo(
+            "Sentry is not configured. "
+            "Set the SENTRY_DSN environment variable."
+        )
+        raise typer.Exit(code=1)
+
+    event_id = send_test_exception()
+
+    if event_id is None:
+        typer.echo(
+            "The Sentry test exception could not be sent."
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo(
+        "Sentry test exception sent successfully. "
+        f"Event ID: {event_id}."
+    )
+
+
+def run_app() -> None:
+    """Initialize monitoring and run the Typer application."""
+
+    initialize_sentry()
+
+    try:
+        app()
+
+    except Exception as error:
+        event_id = capture_application_exception(
+            error=error,
+        )
+
+        typer.echo(
+            "An unexpected application error occurred."
+        )
+
+        if event_id is not None:
+            typer.echo(
+                f"Sentry event ID: {event_id}."
+            )
+
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
-    app()
+    run_app()

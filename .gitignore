@@ -10,3 +10,11 @@ htmlcov/
 .vscode/
 .idea/
 .DS_Store
+
+.coverage
+htmlcov/
+.pytest_cache/
+__pycache__/
+*.pyc
+.env
+epic_events.db
