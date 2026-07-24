@@ -15,7 +15,7 @@ from typing import Optional
 
 from passlib.hash import bcrypt
 
-from src.auth import require_permission
+from src.core.auth import require_permission
 from src.models.user import User
 
 

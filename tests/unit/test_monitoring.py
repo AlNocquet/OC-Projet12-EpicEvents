@@ -4,7 +4,7 @@ Tests for Sentry monitoring configuration and exception capture.
 
 from unittest.mock import Mock
 
-from src.monitoring import (
+from src.core.monitoring import (
     capture_application_exception,
     initialize_sentry,
     send_test_exception,
@@ -23,7 +23,7 @@ def test_initialize_sentry_without_dsn(
 
     sentry_init = Mock()
     monkeypatch.setattr(
-        "src.monitoring.sentry_sdk.init",
+        "src.core.monitoring.sentry_sdk.init",
         sentry_init,
     )
 
@@ -47,7 +47,7 @@ def test_initialize_sentry_with_environment_configuration(
 
     sentry_init = Mock()
     monkeypatch.setattr(
-        "src.monitoring.sentry_sdk.init",
+        "src.core.monitoring.sentry_sdk.init",
         sentry_init,
     )
 
@@ -74,11 +74,11 @@ def test_capture_application_exception(
     flush = Mock()
 
     monkeypatch.setattr(
-        "src.monitoring.sentry_sdk.capture_exception",
+        "src.core.monitoring.sentry_sdk.capture_exception",
         capture_exception,
     )
     monkeypatch.setattr(
-        "src.monitoring.sentry_sdk.flush",
+        "src.core.monitoring.sentry_sdk.flush",
         flush,
     )
 
@@ -115,7 +115,7 @@ def test_send_test_exception(
         return "demo-event"
 
     monkeypatch.setattr(
-        "src.monitoring.capture_application_exception",
+        "src.core.monitoring.capture_application_exception",
         fake_capture,
     )
 

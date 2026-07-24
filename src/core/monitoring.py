@@ -12,7 +12,7 @@ from typing import Optional
 
 import sentry_sdk
 
-from src.config import (
+from src.core.config import (
     get_sentry_dsn,
     get_sentry_environment,
 )

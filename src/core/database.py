@@ -11,7 +11,7 @@ All models use this connection.
 
 from peewee import SqliteDatabase
 
-from src.config import DATABASE_PATH
+from src.core.config import DATABASE_PATH
 
 
 database = SqliteDatabase(

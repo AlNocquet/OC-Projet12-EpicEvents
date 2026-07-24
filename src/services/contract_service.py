@@ -12,10 +12,11 @@ All contract-related database operations are centralized in this module.
 
 from decimal import Decimal, InvalidOperation
 
-from src.auth import (
+from src.core.auth import (
     has_required_permission,
     require_permission,
 )
+
 from src.models.client import Client
 from src.models.contract import Contract
 from src.models.user import User

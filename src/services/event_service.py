@@ -13,7 +13,7 @@ All event-related database operations are centralized in this module.
 from datetime import datetime
 from typing import Optional
 
-from src.auth import require_permission
+from src.core.auth import require_permission
 from src.models.contract import Contract
 from src.models.event import Event
 from src.models.user import User

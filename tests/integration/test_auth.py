@@ -6,7 +6,7 @@ Tests for the authentication and authorization module.
 
 import pytest
 
-from src.auth import (
+from src.core.auth import (
     authenticate_user,
     check_user_department,
     has_required_permission,

@@ -12,7 +12,7 @@ All client-related database operations are centralized in this module.
 
 from datetime import datetime
 
-from src.auth import require_permission
+from src.core.auth import require_permission
 
 from src.models.client import Client
 from src.models.user import User

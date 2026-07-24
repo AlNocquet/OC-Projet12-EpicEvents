@@ -7,7 +7,7 @@ from peewee import (
     TextField,
 )
 
-from src.database import database
+from src.core.database import database
 from src.models.contract import Contract
 from src.models.user import User
 

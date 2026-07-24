@@ -8,7 +8,7 @@ from peewee import (
     Model,
 )
 
-from src.database import database
+from src.core.database import database
 from src.models.client import Client
 from src.models.user import User
 

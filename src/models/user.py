@@ -1,6 +1,6 @@
 from peewee import BooleanField, CharField, Model
 
-from src.database import database
+from src.core.database import database
 
 
 class User(Model):

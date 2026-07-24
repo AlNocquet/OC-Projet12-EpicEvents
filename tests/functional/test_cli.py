@@ -4,14 +4,14 @@ Functional tests for the Epic Events Typer command-line interface.
 
 from typer.testing import CliRunner
 
-from src.main import app
+from src.__main__ import app
 
 
 runner = CliRunner()
 
 
 def test_cli_help_displays_main_commands():
-    """The CLI help exposes the main CRM workflows."""
+    """The CLI help exposes the main CRM command groups."""
 
     result = runner.invoke(
         app,
@@ -21,11 +21,12 @@ def test_cli_help_displays_main_commands():
     )
 
     assert result.exit_code == 0
-    assert "initialize-database" in result.stdout
-    assert "create-client-command" in result.stdout
-    assert "create-contract-command" in result.stdout
-    assert "create-event-command" in result.stdout
-    assert "test-sentry-command" in result.stdout
+    assert "auth" in result.stdout
+    assert "user" in result.stdout
+    assert "client" in result.stdout
+    assert "contract" in result.stdout
+    assert "event" in result.stdout
+    assert "monitoring" in result.stdout
 
 
 def test_cli_authentication_success(
@@ -36,7 +37,8 @@ def test_cli_authentication_success(
     result = runner.invoke(
         app,
         [
-            "authenticate-user-command",
+            "auth",
+            "login",
             management_user.email,
         ],
         input="ManagementPassword123!\n",
@@ -54,7 +56,8 @@ def test_cli_authentication_failure(
     result = runner.invoke(
         app,
         [
-            "authenticate-user-command",
+            "auth",
+            "login",
             management_user.email,
         ],
         input="WrongPassword123!\n",
@@ -73,7 +76,8 @@ def test_cli_list_clients_for_authenticated_support(
     result = runner.invoke(
         app,
         [
-            "list-clients-command",
+            "client",
+            "list",
             support_user.email,
         ],
         input="SupportPassword123!\n",
@@ -92,7 +96,8 @@ def test_cli_management_cannot_create_client(
     result = runner.invoke(
         app,
         [
-            "create-client-command",
+            "client",
+            "create",
             management_user.email,
             "Unauthorized Client",
             "unauthorized@example.com",
@@ -115,7 +120,8 @@ def test_cli_event_creation_rejects_invalid_datetime(
     result = runner.invoke(
         app,
         [
-            "create-event-command",
+            "event",
+            "create",
             commercial_user.email,
             str(signed_contract.id),
             "Conference",
@@ -142,7 +148,8 @@ def test_cli_sentry_command_requires_management(
     result = runner.invoke(
         app,
         [
-            "test-sentry-command",
+            "monitoring",
+            "test-sentry",
             commercial_user.email,
         ],
         input="CommercialPassword123!\n",
@@ -159,14 +166,15 @@ def test_cli_sentry_command_reports_missing_configuration(
     """The CLI explains when the Sentry DSN is missing."""
 
     monkeypatch.setattr(
-        "src.main.initialize_sentry",
+        "src.cli.monitoring.initialize_sentry",
         lambda: False,
     )
 
     result = runner.invoke(
         app,
         [
-            "test-sentry-command",
+            "monitoring",
+            "test-sentry",
             management_user.email,
         ],
         input="ManagementPassword123!\n",
@@ -183,18 +191,19 @@ def test_cli_sentry_command_success(
     """A management collaborator can send the controlled event."""
 
     monkeypatch.setattr(
-        "src.main.initialize_sentry",
+        "src.cli.monitoring.initialize_sentry",
         lambda: True,
     )
     monkeypatch.setattr(
-        "src.main.send_test_exception",
+        "src.cli.monitoring.send_test_exception",
         lambda: "event-456",
     )
 
     result = runner.invoke(
         app,
         [
-            "test-sentry-command",
+            "monitoring",
+            "test-sentry",
             management_user.email,
         ],
         input="ManagementPassword123!\n",
