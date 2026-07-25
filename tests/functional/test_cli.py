@@ -6,9 +6,29 @@ from typer.testing import CliRunner
 
 from src.__main__ import app
 
+import pytest
+
 
 runner = CliRunner()
 
+
+@pytest.fixture(autouse=True)
+def isolate_jwt_session(
+    tmp_path,
+    monkeypatch,
+):
+    """Use an isolated JWT configuration for every CLI test."""
+
+    monkeypatch.setenv(
+        "JWT_SECRET_KEY",
+        "test-jwt-secret-key-for-hs256-functional-tests-2026",
+    )
+
+    monkeypatch.setattr(
+        "src.core.jwt_auth.TOKEN_FILE_PATH",
+        tmp_path / ".epic_events_token.json",
+    )
+    
 
 def test_cli_help_displays_main_commands():
     """The CLI help exposes the main CRM command groups."""
@@ -73,19 +93,28 @@ def test_cli_list_clients_for_authenticated_support(
 ):
     """An authenticated support collaborator can consult clients."""
 
-    result = runner.invoke(
+    login_result = runner.invoke(
         app,
         [
-            "client",
-            "list",
+            "auth",
+            "login",
             support_user.email,
         ],
         input="SupportPassword123!\n",
     )
 
+    assert login_result.exit_code == 0
+
+    result = runner.invoke(
+        app,
+        [
+            "client",
+            "list",
+        ],
+    )
+
     assert result.exit_code == 0
-    assert "Kevin Casey" in result.stdout
-    assert "Cool Startup LLC" in result.stdout
+    assert client.full_name in result.output
 
 
 def test_cli_management_cannot_create_client(
@@ -93,22 +122,32 @@ def test_cli_management_cannot_create_client(
 ):
     """CLI operations enforce service-layer permissions."""
 
+    login_result = runner.invoke(
+        app,
+        [
+            "auth",
+            "login",
+            management_user.email,
+        ],
+        input="ManagementPassword123!\n",
+    )
+
+    assert login_result.exit_code == 0
+
     result = runner.invoke(
         app,
         [
             "client",
             "create",
-            management_user.email,
             "Unauthorized Client",
             "unauthorized@example.com",
             "+33 1 23 45 67 89",
             "Unauthorized Company",
         ],
-        input="ManagementPassword123!\n",
     )
 
     assert result.exit_code == 1
-    assert "Permission denied." in result.stdout
+    assert "Permission denied." in result.output
 
 
 def test_cli_event_creation_rejects_invalid_datetime(
@@ -117,12 +156,23 @@ def test_cli_event_creation_rejects_invalid_datetime(
 ):
     """Invalid date input is rejected before event persistence."""
 
+    login_result = runner.invoke(
+        app,
+        [
+            "auth",
+            "login",
+            commercial_user.email,
+        ],
+        input="CommercialPassword123!\n",
+    )
+
+    assert login_result.exit_code == 0
+
     result = runner.invoke(
         app,
         [
             "event",
             "create",
-            commercial_user.email,
             str(signed_contract.id),
             "Conference",
             "Paris",
@@ -130,7 +180,6 @@ def test_cli_event_creation_rejects_invalid_datetime(
             "invalid-date",
             "2026-09-10T18:00",
         ],
-        input="CommercialPassword123!\n",
     )
 
     assert result.exit_code == 1
@@ -145,18 +194,28 @@ def test_cli_sentry_command_requires_management(
 ):
     """A commercial collaborator cannot trigger the Sentry test."""
 
-    result = runner.invoke(
+    login_result = runner.invoke(
         app,
         [
-            "monitoring",
-            "test-sentry",
+            "auth",
+            "login",
             commercial_user.email,
         ],
         input="CommercialPassword123!\n",
     )
 
+    assert login_result.exit_code == 0
+
+    result = runner.invoke(
+        app,
+        [
+            "monitoring",
+            "test-sentry",
+        ],
+    )
+
     assert result.exit_code == 1
-    assert "Permission denied." in result.stdout
+    assert "Permission denied." in result.output
 
 
 def test_cli_sentry_command_reports_missing_configuration(
@@ -164,6 +223,18 @@ def test_cli_sentry_command_reports_missing_configuration(
     monkeypatch,
 ):
     """The CLI explains when the Sentry DSN is missing."""
+
+    login_result = runner.invoke(
+        app,
+        [
+            "auth",
+            "login",
+            management_user.email,
+        ],
+        input="ManagementPassword123!\n",
+    )
+
+    assert login_result.exit_code == 0
 
     monkeypatch.setattr(
         "src.cli.monitoring.initialize_sentry",
@@ -175,13 +246,15 @@ def test_cli_sentry_command_reports_missing_configuration(
         [
             "monitoring",
             "test-sentry",
-            management_user.email,
         ],
-        input="ManagementPassword123!\n",
     )
 
     assert result.exit_code == 1
-    assert "Sentry is not configured." in result.stdout
+    assert (
+        "Sentry is not configured. "
+        "Set the SENTRY_DSN environment variable."
+        in result.output
+    )
 
 
 def test_cli_sentry_command_success(
@@ -189,6 +262,18 @@ def test_cli_sentry_command_success(
     monkeypatch,
 ):
     """A management collaborator can send the controlled event."""
+
+    login_result = runner.invoke(
+        app,
+        [
+            "auth",
+            "login",
+            management_user.email,
+        ],
+        input="ManagementPassword123!\n",
+    )
+
+    assert login_result.exit_code == 0
 
     monkeypatch.setattr(
         "src.cli.monitoring.initialize_sentry",
@@ -204,11 +289,9 @@ def test_cli_sentry_command_success(
         [
             "monitoring",
             "test-sentry",
-            management_user.email,
         ],
-        input="ManagementPassword123!\n",
     )
 
     assert result.exit_code == 0
-    assert "Sentry test exception sent successfully." in result.stdout
-    assert "event-456" in result.stdout
+    assert "Sentry test exception sent successfully." in result.output
+    assert "Event ID: event-456." in result.output
