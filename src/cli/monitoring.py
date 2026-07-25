@@ -4,7 +4,7 @@ CLI commands used to demonstrate application monitoring.
 
 import typer
 
-from src.cli.common import authenticate_current_user
+from src.cli.common import get_current_user_from_session
 from src.core.auth import require_permission
 from src.core.monitoring import (
     initialize_sentry,
@@ -19,14 +19,10 @@ app = typer.Typer(
 
 
 @app.command("test-sentry")
-def test_sentry(
-    authenticated_email: str,
-) -> None:
+def test_sentry() -> None:
     """Send a controlled exception to Sentry."""
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         require_permission(

@@ -4,7 +4,7 @@ CLI commands used to manage CRM clients.
 
 import typer
 
-from src.cli.common import authenticate_current_user
+from src.cli.common import get_current_user_from_session
 from src.services.client_service import (
     create_client as create_client_service,
     list_all_clients as list_all_clients_service,
@@ -20,7 +20,6 @@ app = typer.Typer(
 
 @app.command("create")
 def create(
-    authenticated_email: str,
     full_name: str,
     client_email: str,
     phone: str,
@@ -33,9 +32,7 @@ def create(
     client. The client is automatically assigned to that commercial.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         client = create_client_service(
@@ -57,9 +54,7 @@ def create(
 
 
 @app.command("list")
-def list_clients(
-    authenticated_email: str,
-) -> None:
+def list_clients() -> None:
     """
     Display every client stored in the CRM.
 
@@ -67,9 +62,7 @@ def list_clients(
     information in read-only mode.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         clients = list_all_clients_service(
@@ -99,7 +92,6 @@ def list_clients(
 
 @app.command("update")
 def update(
-    authenticated_email: str,
     client_id: int,
     full_name: str,
     client_email: str,
@@ -113,9 +105,7 @@ def update(
     may update its information.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         client = update_client_service(

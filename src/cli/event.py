@@ -6,7 +6,7 @@ from datetime import datetime
 
 import typer
 
-from src.cli.common import authenticate_current_user
+from src.cli.common import get_current_user_from_session
 from src.models.event import Event
 from src.services.event_service import (
     assign_support_to_event as assign_support_to_event_service,
@@ -79,7 +79,6 @@ def _display_events(
 
 @app.command("create")
 def create(
-    authenticated_email: str,
     contract_id: int,
     event_name: str,
     location: str,
@@ -95,9 +94,7 @@ def create(
     related client may create the event. Datetimes must use ISO format.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         parsed_event_start = _parse_datetime(
@@ -131,9 +128,7 @@ def create(
 
 
 @app.command("list")
-def list_events(
-    authenticated_email: str,
-) -> None:
+def list_events() -> None:
     """
     Display every event stored in the CRM.
 
@@ -141,9 +136,7 @@ def list_events(
     read-only mode.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         events = list_all_events_service(
@@ -160,9 +153,7 @@ def list_events(
 
 
 @app.command("list-unassigned")
-def list_unassigned(
-    authenticated_email: str,
-) -> None:
+def list_unassigned() -> None:
     """
     Display events without an assigned support collaborator.
 
@@ -170,9 +161,7 @@ def list_unassigned(
     collaborators.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         events = list_unassigned_events_service(
@@ -189,16 +178,12 @@ def list_unassigned(
 
 
 @app.command("list-mine")
-def list_mine(
-    authenticated_email: str,
-) -> None:
+def list_mine() -> None:
     """
     Display events assigned to the authenticated support collaborator.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         events = list_my_support_events_service(
@@ -216,7 +201,6 @@ def list_mine(
 
 @app.command("assign-support")
 def assign_support(
-    authenticated_email: str,
     event_id: int,
     support_user_id: int,
 ) -> None:
@@ -227,9 +211,7 @@ def assign_support(
     the support contact.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         event = assign_support_to_event_service(
@@ -249,7 +231,6 @@ def assign_support(
 
 @app.command("update")
 def update(
-    authenticated_email: str,
     event_id: int,
     event_name: str,
     location: str,
@@ -264,9 +245,7 @@ def update(
     Datetimes must use ISO format.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         parsed_event_start = _parse_datetime(

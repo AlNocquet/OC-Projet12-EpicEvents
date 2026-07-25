@@ -9,6 +9,14 @@ import typer
 
 from src.cli.common import authenticate_current_user
 from src.core.auth import require_permission
+from src.core.jwt_auth import create_access_token, save_token
+from src.cli.common import get_current_user_from_session
+
+from src.core.jwt_auth import (
+    create_access_token,
+    delete_token,
+    save_token,
+)
 
 
 app = typer.Typer(
@@ -27,20 +35,35 @@ def login(
         email=email,
     )
 
+    token = create_access_token(
+    user=user,
+    )
+
+    save_token(
+        token=token,
+    )
+
     typer.echo(
         f"Welcome {user.full_name}!"
     )
 
 
-@app.command("check-management")
-def check_management(
-    email: str,
-) -> None:
-    """Verify that an active user belongs to management."""
+@app.command("logout")
+def logout() -> None:
+    """Delete the locally stored JWT session."""
 
-    user = authenticate_current_user(
-        email=email,
-    )
+    if delete_token():
+        typer.echo("Logout successful.")
+        return
+
+    typer.echo("No active session found.")
+
+    
+@app.command("check-management")
+def check_management() -> None:
+    """Verify that the authenticated user belongs to management."""
+
+    user = get_current_user_from_session()
 
     try:
         require_permission(

@@ -4,7 +4,7 @@ CLI commands used to manage CRM contracts.
 
 import typer
 
-from src.cli.common import authenticate_current_user
+from src.cli.common import get_current_user_from_session
 from src.models.contract import Contract
 from src.services.contract_service import (
     create_contract as create_contract_service,
@@ -45,7 +45,6 @@ def _display_contracts(
 
 @app.command("create")
 def create(
-    authenticated_email: str,
     client_id: int,
     total_amount: str,
     amount_due: str,
@@ -61,9 +60,7 @@ def create(
     The signed status must be provided as true or false.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         contract = create_contract_service(
@@ -85,9 +82,7 @@ def create(
 
 
 @app.command("list")
-def list_contracts(
-    authenticated_email: str,
-) -> None:
+def list_contracts() -> None:
     """
     Display every contract stored in the CRM.
 
@@ -95,9 +90,7 @@ def list_contracts(
     information in read-only mode.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         contracts = list_all_contracts_service(
@@ -114,9 +107,7 @@ def list_contracts(
 
 
 @app.command("list-unsigned")
-def list_unsigned(
-    authenticated_email: str,
-) -> None:
+def list_unsigned() -> None:
     """
     Display every unsigned contract.
 
@@ -124,9 +115,7 @@ def list_unsigned(
     commercial users.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         contracts = list_unsigned_contracts_service(
@@ -143,9 +132,7 @@ def list_unsigned(
 
 
 @app.command("list-unpaid")
-def list_unpaid(
-    authenticated_email: str,
-) -> None:
+def list_unpaid() -> None:
     """
     Display every contract that has not yet been fully paid.
 
@@ -153,9 +140,7 @@ def list_unpaid(
     commercial users.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         contracts = list_unpaid_contracts_service(
@@ -173,7 +158,6 @@ def list_unpaid(
 
 @app.command("update")
 def update(
-    authenticated_email: str,
     contract_id: int,
     total_amount: str,
     amount_due: str,
@@ -189,9 +173,7 @@ def update(
     The signed status must be provided as true or false.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         contract = update_contract_service(

@@ -6,6 +6,7 @@ import typer
 
 from src.core.auth import authenticate_user
 from src.models.user import User
+from src.core.jwt_auth import get_current_user_from_token
 
 
 def prompt_password(
@@ -45,3 +46,14 @@ def authenticate_current_user(
         raise typer.Exit(code=1)
 
     return user
+
+
+def get_current_user_from_session() -> User:
+    """Return the active collaborator identified by the local JWT."""
+
+    try:
+        return get_current_user_from_token()
+
+    except ValueError as error:
+        typer.echo(str(error))
+        raise typer.Exit(code=1) from error

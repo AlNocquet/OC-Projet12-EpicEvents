@@ -5,9 +5,10 @@ CLI commands used to manage collaborator accounts.
 import typer
 
 from src.cli.common import (
-    authenticate_current_user,
+    get_current_user_from_session,
     prompt_password,
 )
+
 from src.services.user_service import (
     create_user as create_user_service,
     delete_user as delete_user_service,
@@ -23,7 +24,6 @@ app = typer.Typer(
 
 @app.command("create")
 def create(
-    authenticated_email: str,
     full_name: str,
     email: str,
     department: str,
@@ -35,9 +35,7 @@ def create(
     collaborator.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     password = prompt_password(
         prompt_text="New user password",
@@ -64,7 +62,6 @@ def create(
 
 @app.command("update")
 def update(
-    authenticated_email: str,
     user_id: int,
     full_name: str,
     email: str,
@@ -77,9 +74,7 @@ def update(
     collaborator.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         user = update_user_service(
@@ -101,7 +96,6 @@ def update(
 
 @app.command("delete")
 def delete(
-    authenticated_email: str,
     user_id: int,
 ) -> None:
     """
@@ -110,9 +104,7 @@ def delete(
     Related CRM records are preserved.
     """
 
-    current_user = authenticate_current_user(
-        email=authenticated_email,
-    )
+    current_user = get_current_user_from_session()
 
     try:
         user = delete_user_service(
