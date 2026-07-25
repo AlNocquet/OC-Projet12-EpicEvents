@@ -1,7 +1,5 @@
 # Epic Events CRM
 
----
-
 ## Présentation
 
 Epic Events est une application CRM sécurisée en ligne de commande développée avec Python.
@@ -13,8 +11,9 @@ Le projet met en œuvre :
 - une base de données relationnelle SQLite ;
 - l’ORM Peewee ;
 - une interface en ligne de commande avec Typer ;
-- une authentification sécurisée ;
-- des autorisations par rôle ;
+- des mots de passe hachés avec bcrypt ;
+- une authentification par session JWT ;
+- des autorisations par rôle, propriété et affectation ;
 - le principe du moindre privilège ;
 - la journalisation des erreurs avec Sentry ;
 - des tests unitaires, d’intégration et fonctionnels.
@@ -26,14 +25,19 @@ Le projet met en œuvre :
 ### Collaborateurs
 
 - Création du premier compte de gestion
-- Authentification par email et mot de passe
+- Connexion par email et mot de passe
+- Création d’une session JWT locale après authentification
+- Déconnexion et suppression de la session locale
 - Création de comptes collaborateurs
 - Mise à jour des collaborateurs
-- Désactivation logique des comptes
+- Désactivation logique des comptes afin de préserver les données CRM liées
 - Attribution d’un département :
   - `MANAGEMENT`
   - `COMMERCIAL`
   - `SUPPORT`
+- Protection du compte de gestion connecté :
+  - il ne peut pas se désactiver lui-même ;
+  - il ne peut pas retirer son propre département `MANAGEMENT`
 
 ### Clients
 
@@ -41,79 +45,134 @@ Le projet met en œuvre :
 - Association automatique du client au commercial connecté
 - Lecture des clients par tous les collaborateurs actifs
 - Mise à jour d’un client uniquement par son commercial responsable
+- Conservation des clients lorsqu’un collaborateur est désactivé
 
 ### Contrats
 
 - Création d’un contrat par la gestion
-- Association du contrat au client et à son commercial
+- Association automatique au client et au commercial responsable du client
 - Lecture des contrats par tous les collaborateurs actifs
 - Mise à jour :
   - par la gestion pour tous les contrats ;
-  - par le commercial pour les contrats de ses propres clients
+  - par un commercial pour les contrats de ses propres clients
 - Filtrage des contrats :
   - non signés ;
   - non entièrement payés
+- Validation du montant total et du montant restant à payer
 
 ### Événements
 
-- Création d’un événement par le commercial responsable
+- Création d’un événement par le commercial responsable du client
 - Création autorisée uniquement pour un contrat signé
 - Lecture des événements par tous les collaborateurs actifs
 - Liste des événements sans support affecté
-- Affectation d’un collaborateur support par la gestion
+- Affectation d’un collaborateur support actif par la gestion
 - Liste des événements attribués au support connecté
 - Mise à jour d’un événement uniquement par le support affecté
+- Validation des dates, du nombre de participants et des champs obligatoires
 
 ### Sécurité et supervision
 
 - Hachage des mots de passe avec Passlib et bcrypt
 - Saisie masquée des mots de passe
+- JWT signé avec l’algorithme HS256
+- Expiration du JWT après 60 minutes
+- Session locale enregistrée dans `.epic_events_token.json`
+- Rechargement de l’utilisateur depuis SQLite à chaque commande protégée
+- Refus immédiat d’un compte désactivé ou supprimé, même avec un JWT encore valide
 - Permissions appliquées dans la couche service
 - Requêtes paramétrées via Peewee
 - Validation des données avant enregistrement
-- Variables sensibles exclues du dépôt Git
+- Secrets, base locale et token exclus du dépôt Git
 - Journalisation des exceptions inattendues avec Sentry
 
 ---
 
 ## Architecture
 
-L’application suit une architecture en couches :
+L’application suit une architecture en couches.
 
 ```text
 Utilisateur
     |
     v
-CLI Typer
-src/main.py
-    |
-    +--> Authentification et autorisation
-    |    src/auth.py
-    |
-    +--> Services métier
-         src/services/
-              |
-              v
-         Modèles Peewee
-         src/models/
-              |
-              v
-         Base SQLite
-
-Exceptions inattendues
+python -m src
     |
     v
-src/monitoring.py
+src/__main__.py
     |
-    v
-Sentry
+    +--> src/cli/
+    |      auth.py
+    |      user.py
+    |      client.py
+    |      contract.py
+    |      event.py
+    |      monitoring.py
+    |      common.py
+    |
+    +--> src/core/
+    |      auth.py
+    |      jwt_auth.py
+    |      config.py
+    |      database.py
+    |      monitoring.py
+    |
+    +--> src/services/
+    |      user_service.py
+    |      client_service.py
+    |      contract_service.py
+    |      event_service.py
+    |
+    +--> src/models/
+           user.py
+           client.py
+           contract.py
+           event.py
+               |
+               v
+          SQLite / epic_events.db
 ```
 
-Le diagramme des relations est disponible dans :
+### Responsabilités des couches
+
+| Couche | Responsabilité |
+|---|---|
+| `src/__main__.py` | Compose l’application Typer, initialise Sentry et intercepte les erreurs inattendues |
+| `src/cli/` | Collecte les arguments, affiche les résultats et transforme les erreurs attendues en sorties CLI |
+| `src/core/auth.py` | Vérifie l’email, le mot de passe bcrypt et les départements autorisés |
+| `src/core/jwt_auth.py` | Crée, signe, valide, charge, enregistre et supprime les JWT |
+| `src/core/config.py` | Centralise les chemins et les variables d’environnement |
+| `src/services/` | Applique les règles métier, les permissions, la propriété et les affectations |
+| `src/models/` | Définit les entités Peewee et leurs relations |
+| SQLite | Stocke les collaborateurs, clients, contrats et événements |
+| Sentry | Reçoit les exceptions inattendues et l’exception contrôlée de démonstration |
+
+### Flux d’authentification JWT
 
 ```text
-docs/architecture/diagramme-des-relations.png
+auth login EMAIL
+    |
+    +--> mot de passe saisi dans un prompt masqué
+    +--> vérification bcrypt dans SQLite
+    +--> création d’un JWT signé HS256
+    +--> expiration fixée à 60 minutes
+    +--> enregistrement dans .epic_events_token.json
 ```
+
+Pour chaque commande protégée :
+
+```text
+commande CLI
+    |
+    +--> chargement du token local
+    +--> validation de la signature et de l’expiration
+    +--> lecture de l’identifiant utilisateur dans la claim sub
+    +--> rechargement de l’utilisateur depuis SQLite
+    +--> contrôle de l’existence et de l’état actif du compte
+    +--> autorisation finale dans la couche service
+```
+
+Le département contenu dans le JWT n’est pas utilisé comme source d’autorisation. La base SQLite et la couche service restent les sources de vérité.
 
 ---
 
@@ -128,46 +187,70 @@ OC-Projet12-EpicEvents/
 ├── requirements.txt
 ├── docs/
 │   ├── architecture/
-│   │   ├── architecture-summary-fr.md
-│   │   ├── architecture-summary-en.md
-│   │   ├── EpicEvents-architecture-technique.pdf
-│   │   └── diagramme-des-relations.png
 │   ├── decisions/
+│   │   ├── ADR-007-test-suite-organization.md
+│   │   ├── ADR-008-cli-application-package-reorganization.md
+│   │   └── ADR-009-jwt-authentication-and-local-session.md
 │   ├── journal/
+│   │   ├── Day-07.md
+│   │   ├── Day-08.md
+│   │   └── Day-09.md
 │   └── uml/
+│       ├── UML-v0.9.md
+│       ├── UML-v1.0.md
+│       └── UML-v1.1.md
 ├── src/
 │   ├── __init__.py
-│   ├── auth.py
-│   ├── config.py
-│   ├── database.py
-│   ├── main.py
-│   ├── monitoring.py
+│   ├── __main__.py
+│   ├── cli/
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── client.py
+│   │   ├── common.py
+│   │   ├── contract.py
+│   │   ├── event.py
+│   │   ├── monitoring.py
+│   │   └── user.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── auth.py
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── jwt_auth.py
+│   │   └── monitoring.py
 │   ├── models/
 │   │   ├── __init__.py
-│   │   ├── user.py
 │   │   ├── client.py
 │   │   ├── contract.py
-│   │   └── event.py
-│   └── services/
+│   │   ├── event.py
+│   │   └── user.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── client_service.py
+│   │   ├── contract_service.py
+│   │   ├── event_service.py
+│   │   └── user_service.py
+│   └── utils/
 │       ├── __init__.py
-│       ├── user_service.py
-│       ├── client_service.py
-│       ├── contract_service.py
-│       └── event_service.py
+│       ├── create_db.py
+│       └── create_user.py
 └── tests/
     ├── conftest.py
-    ├── unit/
-    │   └── test_monitoring.py
+    ├── functional/
+    │   └── test_cli.py
     ├── integration/
     │   ├── test_auth.py
     │   ├── test_client_service.py
     │   ├── test_contract_service.py
     │   ├── test_database.py
     │   ├── test_event_service.py
+    │   ├── test_jwt_auth.py
     │   └── test_user_service.py
-    └── functional/
-        └── test_cli.py
+    └── unit/
+        └── test_monitoring.py
 ```
+
+Les noms des anciens journaux ou UML peuvent légèrement différer dans le dépôt selon leur nom historique. Les versions les plus récentes sont Day 09, ADR-009 et UML v1.1.
 
 ---
 
@@ -175,7 +258,7 @@ OC-Projet12-EpicEvents/
 
 - Python 3.9 ou version supérieure
 - Git
-- Un terminal compatible
+- PowerShell, un terminal macOS/Linux ou un terminal compatible
 - Un compte Sentry facultatif pour tester la supervision
 
 Version utilisée pendant le développement :
@@ -186,33 +269,33 @@ Python 3.12.2
 
 ---
 
-## Installation
+## Installation dans un environnement vierge
 
 ### 1. Cloner le dépôt
 
-```bash
+```powershell
 git clone https://github.com/AlNocquet/OC-Projet12-EpicEvents.git
 cd OC-Projet12-EpicEvents
 ```
 
 ### 2. Créer un environnement virtuel
 
-```bash
+```powershell
 python -m venv venv
 ```
 
 ### 3. Activer l’environnement virtuel
 
-Git Bash sous Windows :
-
-```bash
-source venv/Scripts/activate
-```
-
 PowerShell sous Windows :
 
 ```powershell
 .\venv\Scripts\Activate.ps1
+```
+
+Invite de commandes Windows :
+
+```bat
+venv\Scripts\activate.bat
 ```
 
 macOS ou Linux :
@@ -223,19 +306,52 @@ source venv/bin/activate
 
 ### 4. Installer les dépendances
 
-```bash
+```powershell
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
----
+### 5. Créer le fichier `.env`
 
-## Initialisation de la base de données
+PowerShell :
 
-Créer les tables :
+```powershell
+Copy-Item .env.example .env
+```
+
+macOS ou Linux :
 
 ```bash
-python -m src.main initialize-database
+cp .env.example .env
+```
+
+Générer une clé JWT aléatoire :
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Copier la valeur générée dans `.env` :
+
+```text
+SENTRY_DSN=
+SENTRY_ENVIRONMENT=development
+JWT_SECRET_KEY=COLLER_ICI_LA_CLE_GENEREE
+```
+
+Règles importantes :
+
+- ne jamais publier la vraie valeur de `JWT_SECRET_KEY` ;
+- ne jamais publier un vrai `SENTRY_DSN` ;
+- ne jamais ajouter `.env` à Git ;
+- utiliser une clé JWT longue et aléatoire.
+
+Sentry est facultatif. L’application fonctionne avec un `SENTRY_DSN` vide, mais la commande de démonstration Sentry nécessite un DSN valide.
+
+### 6. Créer la base de données
+
+```powershell
+python -m src.utils.create_db
 ```
 
 Résultat attendu :
@@ -244,197 +360,302 @@ Résultat attendu :
 Database initialized successfully.
 ```
 
-Créer le premier compte de gestion :
+### 7. Créer le premier compte de gestion
 
-```bash
-python -m src.main create-initial-management-user-command \
-  "Morgan Manager" \
-  manager@epicevents.com
+Cette commande fonctionne uniquement lorsque la base ne contient encore aucun collaborateur.
+
+```powershell
+python -m src.utils.create_user "Morgan Manager" manager@epicevents.com
 ```
 
 Le mot de passe est demandé et confirmé dans un prompt masqué.
+
+Résultat attendu :
+
+```text
+Initial management user created successfully. User ID: 1.
+```
+
+### 8. Vérifier l’installation
+
+```powershell
+python -m src --help
+```
+
+Les groupes suivants doivent apparaître :
+
+```text
+auth
+user
+client
+contract
+event
+monitoring
+```
 
 ---
 
 ## Utilisation
 
-Afficher les commandes disponibles :
+### Principe général
 
-```bash
-python -m src.main --help
+1. Se connecter une seule fois avec `auth login`.
+2. Exécuter les commandes métier sans ressaisir l’email ni le mot de passe.
+3. Se déconnecter avec `auth logout`.
+
+La session expire automatiquement après 60 minutes.
+
+### Afficher l’aide
+
+```powershell
+python -m src --help
+python -m src auth --help
+python -m src user --help
+python -m src client --help
+python -m src contract --help
+python -m src event --help
+python -m src monitoring --help
 ```
 
-Afficher l’aide d’une commande :
+Afficher l’aide d’une commande précise :
 
-```bash
-python -m src.main create-client-command --help
+```powershell
+python -m src client create --help
 ```
 
-### Authentification
+---
 
-```bash
-python -m src.main authenticate-user-command manager@epicevents.com
+## Authentification JWT
+
+### Se connecter
+
+```powershell
+python -m src auth login manager@epicevents.com
 ```
 
-### Gestion des collaborateurs
+Le mot de passe est demandé dans un prompt masqué.
 
-Créer un collaborateur :
+Une connexion réussie crée le fichier local suivant :
 
-```bash
-python -m src.main create-user-account-command \
-  manager@epicevents.com \
-  "Camille Martin" \
-  camille@epicevents.com \
-  COMMERCIAL
+```text
+.epic_events_token.json
 ```
 
-Mettre à jour un collaborateur :
+Ce fichier contient un token d’accès, pas le mot de passe.
 
-```bash
-python -m src.main update-user-account-command \
-  manager@epicevents.com \
-  2 \
-  "Camille Dupont" \
-  camille.dupont@epicevents.com \
-  COMMERCIAL
+### Vérifier l’accès gestion
+
+```powershell
+python -m src auth check-management
 ```
 
-Désactiver un collaborateur :
+### Se déconnecter
 
-```bash
-python -m src.main delete-user-account-command \
-  manager@epicevents.com \
-  2
+```powershell
+python -m src auth logout
 ```
 
-### Gestion des clients
+La déconnexion supprime le fichier local de session.
 
-Créer un client :
+### Commande protégée sans session
 
-```bash
-python -m src.main create-client-command \
-  camille@epicevents.com \
-  "Kevin Casey" \
-  kevin@startup.io \
-  "+33 6 12 34 56 78" \
-  "Cool Startup LLC"
+Lorsqu’aucun token n’est disponible, l’application répond :
+
+```text
+No authentication token found. Please log in.
 ```
 
-Lister les clients :
+---
 
-```bash
-python -m src.main list-clients-command manager@epicevents.com
+## Gestion des collaborateurs
+
+Connexion requise : collaborateur `MANAGEMENT`.
+
+### Créer un collaborateur
+
+```powershell
+python -m src user create "Camille Martin" camille@epicevents.com COMMERCIAL
 ```
 
-Mettre à jour un client :
+Le nouveau mot de passe est demandé et confirmé dans un prompt masqué.
 
-```bash
-python -m src.main update-client-command \
-  camille@epicevents.com \
-  1 \
-  "Kevin Casey" \
-  kevin@startup.io \
-  "+33 6 98 76 54 32" \
-  "Cool Startup LLC"
+### Mettre à jour un collaborateur
+
+```powershell
+python -m src user update 2 "Camille Dupont" camille.dupont@epicevents.com COMMERCIAL
 ```
 
-### Gestion des contrats
+### Désactiver un collaborateur
 
-Créer un contrat :
-
-```bash
-python -m src.main create-contract-command \
-  manager@epicevents.com \
-  1 \
-  10000.00 \
-  4000.00 \
-  true
+```powershell
+python -m src user delete 2
 ```
 
-Lister les contrats :
+La suppression est logique : le compte devient inactif, mais ses clients, contrats et événements restent dans le CRM.
 
-```bash
-python -m src.main list-contracts-command manager@epicevents.com
+---
+
+## Gestion des clients
+
+### Créer un client
+
+Connexion requise : collaborateur `COMMERCIAL`.
+
+```powershell
+python -m src client create "Kevin Casey" kevin@startup.io "+33 6 12 34 56 78" "Cool Startup LLC"
 ```
 
-Lister les contrats non signés :
+Le client est automatiquement associé au commercial connecté.
 
-```bash
-python -m src.main list-unsigned-contracts-command camille@epicevents.com
+### Lister les clients
+
+Connexion requise : tout collaborateur actif.
+
+```powershell
+python -m src client list
 ```
 
-Lister les contrats non entièrement payés :
+### Mettre à jour un client
 
-```bash
-python -m src.main list-unpaid-contracts-command camille@epicevents.com
+Connexion requise : commercial responsable du client.
+
+```powershell
+python -m src client update 1 "Kevin Casey" kevin@startup.io "+33 6 98 76 54 32" "Cool Startup LLC"
 ```
 
-Mettre à jour un contrat :
+---
 
-```bash
-python -m src.main update-contract-command \
-  manager@epicevents.com \
-  1 \
-  10000.00 \
-  0.00 \
-  true
+## Gestion des contrats
+
+### Créer un contrat
+
+Connexion requise : collaborateur `MANAGEMENT`.
+
+```powershell
+python -m src contract create 1 10000.00 4000.00 true
 ```
 
-### Gestion des événements
+Ordre des arguments :
 
-Créer un événement :
-
-```bash
-python -m src.main create-event-command \
-  camille@epicevents.com \
-  1 \
-  "Conférence annuelle" \
-  "Paris" \
-  100 \
-  "2026-09-10T14:00" \
-  "2026-09-10T18:00" \
-  "Accueil à partir de 13 h 30."
+```text
+CLIENT_ID TOTAL_AMOUNT AMOUNT_DUE IS_SIGNED
 ```
 
-Lister tous les événements :
+### Lister les contrats
 
-```bash
-python -m src.main list-events-command manager@epicevents.com
+Connexion requise : tout collaborateur actif.
+
+```powershell
+python -m src contract list
 ```
 
-Lister les événements sans support :
+### Lister les contrats non signés
 
-```bash
-python -m src.main list-unassigned-events-command manager@epicevents.com
+Connexion requise : collaborateur `COMMERCIAL`.
+
+```powershell
+python -m src contract list-unsigned
 ```
 
-Affecter un support :
+### Lister les contrats non entièrement payés
 
-```bash
-python -m src.main assign-support-to-event-command \
-  manager@epicevents.com \
-  1 \
-  3
+Connexion requise : collaborateur `COMMERCIAL`.
+
+```powershell
+python -m src contract list-unpaid
 ```
 
-Lister les événements du support connecté :
+### Mettre à jour un contrat
 
-```bash
-python -m src.main list-my-events-command support@epicevents.com
+Connexion requise :
+
+- gestion pour tous les contrats ;
+- commercial pour les contrats de ses propres clients.
+
+```powershell
+python -m src contract update 1 10000.00 0.00 true
 ```
 
-Mettre à jour un événement attribué :
+Ordre des arguments :
 
-```bash
-python -m src.main update-event-command \
-  support@epicevents.com \
-  1 \
-  "Conférence annuelle" \
-  "Paris - Salle Horizon" \
-  110 \
-  "2026-09-10T14:00" \
-  "2026-09-10T18:30" \
-  "Accueil à 13 h 30 et contrôle du matériel."
+```text
+CONTRACT_ID TOTAL_AMOUNT AMOUNT_DUE IS_SIGNED
+```
+
+---
+
+## Gestion des événements
+
+Les dates utilisent le format ISO suivant :
+
+```text
+YYYY-MM-DDTHH:MM
+```
+
+### Créer un événement
+
+Connexion requise : commercial responsable du client lié à un contrat signé.
+
+```powershell
+python -m src event create 1 "Conférence annuelle" "Paris" 100 "2026-09-10T14:00" "2026-09-10T18:00" "Accueil à partir de 13 h 30."
+```
+
+Ordre des arguments :
+
+```text
+CONTRACT_ID EVENT_NAME LOCATION ATTENDEES EVENT_START EVENT_END [NOTES]
+```
+
+### Lister tous les événements
+
+Connexion requise : tout collaborateur actif.
+
+```powershell
+python -m src event list
+```
+
+### Lister les événements sans support affecté
+
+Connexion requise : collaborateur `MANAGEMENT`.
+
+```powershell
+python -m src event list-unassigned
+```
+
+### Affecter un support à un événement
+
+Connexion requise : collaborateur `MANAGEMENT`.
+
+```powershell
+python -m src event assign-support 1 3
+```
+
+Ordre des arguments :
+
+```text
+EVENT_ID SUPPORT_USER_ID
+```
+
+### Lister les événements du support connecté
+
+Connexion requise : collaborateur `SUPPORT`.
+
+```powershell
+python -m src event list-mine
+```
+
+### Mettre à jour un événement attribué
+
+Connexion requise : support affecté à l’événement.
+
+```powershell
+python -m src event update 1 "Conférence annuelle" "Paris - Salle Horizon" 110 "2026-09-10T14:00" "2026-09-10T18:30" "Accueil à 13 h 30 et contrôle du matériel."
+```
+
+Ordre des arguments :
+
+```text
+EVENT_ID EVENT_NAME LOCATION ATTENDEES EVENT_START EVENT_END [NOTES]
 ```
 
 ---
@@ -445,6 +666,7 @@ python -m src.main update-event-command \
 |---|:---:|:---:|:---:|
 | Lire les clients, contrats et événements | Oui | Oui | Oui |
 | Créer, modifier ou désactiver un collaborateur | Oui | Non | Non |
+| Se désactiver soi-même | Non | Non | Non |
 | Créer un client | Non | Oui | Non |
 | Modifier un client | Non | Ses clients | Non |
 | Créer un contrat | Oui | Non | Non |
@@ -459,39 +681,47 @@ python -m src.main update-event-command \
 
 ---
 
-## Configuration Sentry
+## Configuration et démonstration Sentry
 
 Aucun DSN réel ne doit être enregistré dans le dépôt.
 
-Variables d’environnement :
+Variables du fichier `.env` :
 
 ```text
 SENTRY_DSN
 SENTRY_ENVIRONMENT
 ```
 
-Git Bash :
+Exemple :
 
-```bash
-export SENTRY_DSN="votre-dsn-sentry"
-export SENTRY_ENVIRONMENT="development"
-
-python -m src.main test-sentry-command manager@epicevents.com
+```text
+SENTRY_DSN=VOTRE_DSN_SENTRY
+SENTRY_ENVIRONMENT=development
+JWT_SECRET_KEY=VOTRE_CLE_JWT
 ```
 
-PowerShell :
+Après avoir ajouté un DSN valide et s’être connecté avec un compte de gestion :
 
 ```powershell
-$env:SENTRY_DSN="votre-dsn-sentry"
-$env:SENTRY_ENVIRONMENT="development"
-
-python -m src.main test-sentry-command manager@epicevents.com
+python -m src monitoring test-sentry
 ```
 
-Exception de démonstration attendue :
+Exception contrôlée envoyée :
 
 ```text
 Epic Events controlled Sentry demonstration error.
+```
+
+Résultat CLI attendu :
+
+```text
+Sentry test exception sent successfully. Event ID: <event-id>.
+```
+
+Si aucun DSN n’est configuré :
+
+```text
+Sentry is not configured. Set the SENTRY_DSN environment variable.
 ```
 
 ---
@@ -502,7 +732,7 @@ La suite est organisée en trois catégories.
 
 ### Tests unitaires
 
-```bash
+```powershell
 python -m pytest tests/unit -v
 ```
 
@@ -514,19 +744,21 @@ Résultat validé :
 
 ### Tests d’intégration
 
-```bash
+```powershell
 python -m pytest tests/integration -v
 ```
 
 Résultat validé :
 
 ```text
-134 tests réussis
+143 tests réussis
 ```
+
+Ces tests couvrent notamment les services métier, l’authentification, la base et le moteur JWT.
 
 ### Tests fonctionnels
 
-```bash
+```powershell
 python -m pytest tests/functional -v
 ```
 
@@ -538,14 +770,14 @@ Résultat validé :
 
 ### Suite complète
 
-```bash
-python -m pytest -v
+```powershell
+python -m pytest -q
 ```
 
 Résultat validé :
 
 ```text
-147 tests réussis
+156 tests réussis
 0 échec
 ```
 
@@ -553,19 +785,23 @@ Résultat validé :
 
 ## Couverture
 
-Générer le rapport de couverture :
+Générer le rapport de couverture dans le terminal :
 
-```bash
-python -m pytest \
-  --cov=src \
-  --cov-report=term-missing \
-  --cov-report=html
+```powershell
+python -m pytest --cov=src --cov-report=term-missing
+```
+
+Générer également le rapport HTML :
+
+```powershell
+python -m pytest --cov=src --cov-report=term-missing --cov-report=html
 ```
 
 Résultat validé :
 
 ```text
-TOTAL 76%
+TOTAL 77%
+src/core/jwt_auth.py 96%
 Coverage HTML written to dir htmlcov
 ```
 
@@ -579,27 +815,85 @@ htmlcov/index.html
 
 ## Sécurité
 
-- Mots de passe hachés avec Passlib et bcrypt
-- Mots de passe saisis dans un prompt masqué
-- Comptes inactifs refusés à l’authentification
+- Mots de passe hachés et salés avec bcrypt
+- Mots de passe saisis dans des prompts masqués
+- JWT signé avec HS256
+- Clé JWT lue depuis l’environnement
+- Expiration du JWT après 60 minutes
+- Token stocké localement sans mot de passe
+- Utilisateur rechargé depuis SQLite à chaque commande protégée
+- Comptes absents ou inactifs refusés
 - Permissions appliquées selon le rôle, la propriété ou l’affectation
-- Validation des montants, dates, emails et champs obligatoires
-- Requêtes paramétrées par Peewee
+- Principe du moindre privilège
+- Validation des montants, dates, emails, identifiants et champs obligatoires
+- Requêtes paramétrées par Peewee contre les injections SQL
 - Désactivation logique des collaborateurs
-- Base locale, fichiers `.env` et rapports générés exclus du dépôt
+- Relations protégées par les contraintes de clés étrangères SQLite
+- `.env`, `.epic_events_token.json`, la base locale et les rapports générés exclus du dépôt
 - Données personnelles désactivées par défaut dans Sentry
-- Tests exécutés sur une base SQLite en mémoire
+- Tests exécutés sur une base SQLite isolée en mémoire
+- Secrets et token de test isolés dans des répertoires temporaires
+
+---
+
+## Fichiers locaux à ne jamais publier
+
+```text
+.env
+.epic_events_token.json
+epic_events.db
+.coverage
+htmlcov/
+```
+
+Vérification recommandée avant un commit :
+
+```powershell
+git status --short
+git ls-files .env .epic_events_token.json epic_events.db
+```
+
+La seconde commande ne doit retourner aucun fichier.
+
+---
+
+## Installation propre : contrôle final
+
+Pour valider le projet comme un nouvel utilisateur :
+
+```text
+cloner le dépôt
+→ créer et activer le venv
+→ installer requirements.txt
+→ copier .env.example vers .env
+→ générer JWT_SECRET_KEY
+→ créer les tables
+→ créer le premier compte de gestion
+→ lancer python -m src --help
+→ se connecter avec auth login
+→ exécuter une commande protégée
+→ se déconnecter avec auth logout
+→ lancer les tests
+```
 
 ---
 
 ## Documentation
 
-- `docs/architecture/architecture-summary-fr.md`
-- `docs/architecture/architecture-summary-en.md`
-- `docs/architecture/EpicEvents-architecture-technique.pdf`
-- `docs/architecture/diagramme-des-relations.png`
+Documentation actuelle :
 
-Les décisions techniques, journaux de développement et versions UML sont disponibles dans les autres sous-dossiers de `docs/`.
+- `docs/journal/Day-09.md`
+- `docs/decisions/ADR-009-jwt-authentication-and-local-session.md`
+- `docs/uml/UML-v1.1.md`
+
+Documents d’architecture et historique :
+
+- `docs/architecture/`
+- `docs/decisions/`
+- `docs/journal/`
+- `docs/uml/`
+
+Les ADR expliquent les décisions techniques. Les journaux retracent la progression. Les versions UML documentent l’évolution de l’architecture et du flux d’authentification.
 
 ---
 
